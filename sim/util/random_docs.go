@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
+	"math"
 	"math/rand"
 	"regexp"
 	"strconv"
@@ -20,16 +21,23 @@ import (
 func GetDocByTemplate(filename string, meta bool) (bson.M, error) {
 	var buf []byte
 	var err error
-	var str string
 
 	if buf, err = ioutil.ReadFile(filename); err != nil {
 		return nil, err
 	}
+	return GetRandomizedDoc(buf, meta)
+}
 
+// GetRandomizedDoc returns a randomized doc from byte string
+func GetRandomizedDoc(buf []byte, meta bool) (bson.M, error) {
+	var err error
+	var str string
 	re := regexp.MustCompile(`ObjectId\(\S+\)`)
 	str = re.ReplaceAllString(string(buf), "\"$$oId\"")
 	re = regexp.MustCompile(`ISODate\(\S+\)`)
 	str = re.ReplaceAllString(str, "\"$$date\"")
+	re = regexp.MustCompile(`Number\S+\((\d+)\)`)
+	str = re.ReplaceAllString(str, "$1")
 	re = regexp.MustCompile(`^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+$`)
 	str = re.ReplaceAllString(str, "\"$$email\"")
 
@@ -62,12 +70,10 @@ func RandomizeDocument(doc *map[string]interface{}, f interface{}, meta bool) {
 			if value.(int) == 1 || value.(int) == 0 { // 1 may have special meaning of true
 				(*doc)[key] = value
 			} else {
-				(*doc)[key] = value.(int) + rand.Intn(10)
+				(*doc)[key] = getNumber(value)
 			}
-		case float32:
-			(*doc)[key] = value.(float32) + float32(rand.Intn(10))
-		case float64:
-			(*doc)[key] = value.(float64) + float64(rand.Intn(10))
+		case float32, float64:
+			(*doc)[key] = getNumber(value)
 		case string:
 			if meta == false {
 				if value.(string) == metaDate || isDateString(value.(string)) {
@@ -97,12 +103,10 @@ func getArrayOfRandomDocs(obj []interface{}, doc *[]interface{}, meta bool) {
 			if value.(int) == 1 || value.(int) == 0 { // 1 may have special meaning of true
 				(*doc)[key] = value
 			} else {
-				(*doc)[key] = value.(int) + rand.Intn(10)
+				(*doc)[key] = getNumber(value)
 			}
-		case float32:
-			(*doc)[key] = value.(float32) + float32(rand.Intn(10))
-		case float64:
-			(*doc)[key] = value.(float64) + float64(rand.Intn(10))
+		case float32, float64:
+			(*doc)[key] = getNumber(value)
 		case string:
 			if meta == false {
 				if value.(string) == metaDate || isDateString(value.(string)) {
@@ -246,6 +250,38 @@ var delta = max - min
 func getDate() time.Time {
 	sec := rand.Int63n(delta) + min
 	return time.Unix(sec, 0)
+}
+
+func getNumber(num interface{}) interface{} {
+	var value float64
+	switch num.(type) {
+	case int:
+		return int(getRandomNumber(float64(num.(int))))
+	case int8:
+		return int8(getRandomNumber(float64(num.(int8))))
+	case int32:
+		return int32(getRandomNumber(float64(num.(int32))))
+	case int64:
+		return int64(getRandomNumber(float64(num.(int64))))
+	case float32:
+		return float32(getRandomNumber(float64(num.(float32))))
+	case float64:
+		return getRandomNumber(num.(float64))
+	default:
+		return value
+	}
+}
+
+func getRandomNumber(x float64) float64 {
+	mul := float64(1)
+	for mul <= x {
+		mul *= 10
+	}
+	v := mul * (rand.Float64() + .1)
+	if x == math.Trunc(x) {
+		return math.Round(v)
+	}
+	return math.Round(v*100) / 100
 }
 
 var quotes = []string{
